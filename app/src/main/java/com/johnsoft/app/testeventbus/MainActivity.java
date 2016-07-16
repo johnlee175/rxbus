@@ -13,8 +13,8 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        RxBus.singleInstance.register(this);
-        RxBus.singleInstance.register(this);
+        RxBus.singleInstance.registerSync(this);
+        RxBus.singleInstance.registerSync(this);
         olds = new Just();
         news = new Just();
     }
@@ -22,8 +22,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        RxBus.singleInstance.unregister(this);
-        RxBus.singleInstance.unregister(this);
+        RxBus.singleInstance.unregisterSync(this);
+        RxBus.singleInstance.unregisterSync(this);
     }
 
     @Subscribe(code = 2, scheduler = Subscribe.SCHEDULER_CURRENT_THREAD)

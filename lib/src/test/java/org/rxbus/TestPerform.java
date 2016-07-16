@@ -12,38 +12,24 @@ import com.squareup.otto.ThreadEnforcer;
  * @author John Kenrinus Lee
  * @version 2016-07-12
  */
+// TODO test memory leak
 @RunWith(RobolectricTestRunner.class)
 public class TestPerform {
-    private static final int LOOP = 8000;
+    private static final int LOOP = 80000;
 
     @Test
     public void loopRegisterUnregister() {
-        System.out.println("-----------------------------------");
+        System.out.println("loopRegisterUnregister-----------------------------------");
         long rxavg = 0;
         RxBus rxBus = RxBus.singleInstance;
         Common catcher1 = new Common();
         Common catcher2 = new Common();
         for (int i = 0; i < LOOP; ++i) {
             long start = System.nanoTime();
-            rxBus.register(catcher1);
-            rxBus.register(catcher2);
-            rxBus.unregister(catcher1);
-            rxBus.unregister(catcher2);
-            long end = System.nanoTime();
-            if (rxavg == 0) {
-                rxavg = end - start;
-            } else {
-                rxavg = (rxavg + (end - start)) / 2;
-            }
-        }
-        System.out.println(rxavg);
-        rxavg = 0;
-        for (int i = 0; i < LOOP; ++i) {
-            long start = System.nanoTime();
             rxBus.registerSync(catcher1);
-            rxBus.registerSync(catcher2);
+//            rxBus.registerSync(catcher2);
             rxBus.unregisterSync(catcher1);
-            rxBus.unregisterSync(catcher2);
+//            rxBus.unregisterSync(catcher2);
             long end = System.nanoTime();
             if (rxavg == 0) {
                 rxavg = end - start;
@@ -51,7 +37,7 @@ public class TestPerform {
                 rxavg = (rxavg + (end - start)) / 2;
             }
         }
-        System.out.println(rxavg);
+        System.out.println("rxbus: " + rxavg);
 
         long ottoavg = 0;
         Bus bus = new Bus(ThreadEnforcer.ANY);
@@ -60,9 +46,9 @@ public class TestPerform {
         for (int i = 0; i < LOOP; ++i) {
             long start = System.nanoTime();
             bus.register(catcher3);
-            bus.register(catcher4);
+//            bus.register(catcher4);
             bus.unregister(catcher3);
-            bus.unregister(catcher4);
+//            bus.unregister(catcher4);
             long end = System.nanoTime();
             if (ottoavg == 0) {
                 ottoavg = end - start;
@@ -70,7 +56,7 @@ public class TestPerform {
                 ottoavg = (ottoavg + (end - start)) / 2;
             }
         }
-        System.out.println(ottoavg);
+        System.out.println("otto: " + ottoavg);
 
         long ebavg = 0;
         EventBus eventBus = EventBus.getDefault();
@@ -79,9 +65,9 @@ public class TestPerform {
         for (int i = 0; i < LOOP; ++i) {
             long start = System.nanoTime();
             eventBus.register(catcher5);
-            eventBus.register(catcher6);
+//            eventBus.register(catcher6);
             eventBus.unregister(catcher5);
-            eventBus.unregister(catcher6);
+//            eventBus.unregister(catcher6);
             long end = System.nanoTime();
             if (ebavg == 0) {
                 ebavg = end - start;
@@ -89,19 +75,19 @@ public class TestPerform {
                 ebavg = (ebavg + (end - start)) / 2;
             }
         }
-        System.out.println(ebavg);
+        System.out.println("EventBus: " + ebavg);
     }
 
     @Test
     public void loopPost() {
-        System.out.println("-----------------------------------");
+        System.out.println("loopPost-----------------------------------");
         long rxavg = 0;
         Common catcher1 = new Common();
         RxBus rxBus = RxBus.singleInstance;
         rxBus.registerSync(catcher1);
         for (int i = 0; i < LOOP; ++i) {
             long start = System.nanoTime();
-            rxBus.post(100, "Hello");
+            rxBus.postSync(100, "Hello");
             long end = System.nanoTime();
             if (rxavg == 0) {
                 rxavg = end - start;
@@ -110,7 +96,7 @@ public class TestPerform {
             }
         }
         rxBus.unregisterSync(catcher1);
-        System.out.println(rxavg);
+        System.out.println("rxbus: " + rxavg);
 
         long ottoavg = 0;
         Common catcher2 = new Common();
@@ -127,7 +113,7 @@ public class TestPerform {
             }
         }
         bus.unregister(catcher2);
-        System.out.println(ottoavg);
+        System.out.println("otto: " + ottoavg);
 
         long ebavg = 0;
         Common catcher3 = new Common();
@@ -144,19 +130,19 @@ public class TestPerform {
             }
         }
         eventBus.unregister(catcher3);
-        System.out.println(ebavg);
+        System.out.println("EventBus: " + ebavg);
     }
 
     @Test
     public void loopTargetCall() {
-        System.out.println("-----------------------------------");
+        System.out.println("loopTargetCall-----------------------------------");
         long rxavg = 0;
         Common catcher1 = new Common();
         RxBus rxBus = RxBus.singleInstance;
         rxBus.registerSync(catcher1);
         for (int i = 0; i < LOOP; ++i) {
             catcher1.resetRx();
-            rxBus.post(100, "Hello");
+            rxBus.postSync(100, "Hello");
             if (rxavg == 0) {
                 rxavg = catcher1.takeRx();
             } else {
@@ -164,7 +150,7 @@ public class TestPerform {
             }
         }
         rxBus.unregisterSync(catcher1);
-        System.out.println(rxavg);
+        System.out.println("rxbus: " + rxavg);
 
         long ottoavg = 0;
         Common catcher2 = new Common();
@@ -180,7 +166,7 @@ public class TestPerform {
             }
         }
         bus.unregister(catcher2);
-        System.out.println(ottoavg);
+        System.out.println("otto: " + ottoavg);
 
         long ebavg = 0;
         Common catcher3 = new Common();
@@ -196,7 +182,7 @@ public class TestPerform {
             }
         }
         eventBus.unregister(catcher3);
-        System.out.println(ebavg);
+        System.out.println("EventBus: " + ebavg);
     }
 
     public static final class Common {

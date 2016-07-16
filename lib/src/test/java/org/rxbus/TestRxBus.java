@@ -11,8 +11,6 @@ import org.junit.*;
 import org.junit.runner.*;
 import org.robolectric.RobolectricTestRunner;
 
-import rx.schedulers.Schedulers;
-
 /**
  * @author John Kenrinus Lee
  * @version 2016-07-11
@@ -27,23 +25,23 @@ public class TestRxBus {
     @Test
     public void doNormalTest() throws Exception {
         StringCatcher catcher = new StringCatcher();
-        RxBus.singleInstance.register(catcher);
-        Thread.sleep(TIME); // because of register is async
-        RxBus.singleInstance.post(StringCatcher.EVENT_ONE, "Hello World");
+        RxBus.singleInstance.registerAsync(catcher);
+        Thread.sleep(TIME); // because of registerAsync is async
+        RxBus.singleInstance.postSync(StringCatcher.EVENT_ONE, "Hello World");
         assertEquals("Only one String should be delivered.", 1, catcher.getEvents().size());
         assertEquals("Hello World", catcher.getEvents().get(0));
-        RxBus.singleInstance.post(StringCatcher.EVENT_ONE, "Welcome");
+        RxBus.singleInstance.postSync(StringCatcher.EVENT_ONE, "Welcome");
         assertEquals("Only two String should be delivered.", 2, catcher.getEvents().size());
         assertEquals("Welcome", catcher.getEvents().get(1));
-        RxBus.singleInstance.register(catcher); // duplicate register
-        Thread.sleep(TIME); // because of register is async
-        RxBus.singleInstance.post(StringCatcher.EVENT_ONE, "Shanghai");
+        RxBus.singleInstance.registerAsync(catcher); // duplicate registerAsync
+        Thread.sleep(TIME); // because of registerAsync is async
+        RxBus.singleInstance.postSync(StringCatcher.EVENT_ONE, "Shanghai");
         assertEquals("Only three String should be delivered.", 3, catcher.getEvents().size());
         assertEquals("Shanghai", catcher.getEvents().get(2));
         StringCatcher catcher1 = new StringCatcher();
-        RxBus.singleInstance.register(catcher1); // the twice instance
-        Thread.sleep(TIME); // because of register is async
-        RxBus.singleInstance.post(StringCatcher.EVENT_ONE, "Guangzhou");
+        RxBus.singleInstance.registerAsync(catcher1); // the twice instance
+        Thread.sleep(TIME); // because of registerAsync is async
+        RxBus.singleInstance.postSync(StringCatcher.EVENT_ONE, "Guangzhou");
         assertEquals(1, catcher1.getEvents().size());
         assertEquals("Guangzhou", catcher1.getEvents().get(0));
         int count = 0;
@@ -63,23 +61,23 @@ public class TestRxBus {
                 getEvents().add(push);
             }
         }; // inner class
-        RxBus.singleInstance.register(catcher2); // two target method in one instance
-        Thread.sleep(TIME); // because of register is async
-        RxBus.singleInstance.post(StringCatcher.EVENT_TWO, "Two target");
+        RxBus.singleInstance.registerAsync(catcher2); // two target method in one instance
+        Thread.sleep(TIME); // because of registerAsync is async
+        RxBus.singleInstance.postSync(StringCatcher.EVENT_TWO, "Two target");
         assertEquals(2, catcher2.getEvents().size());
         assertEquals("Two target", catcher2.getEvents().get(0));
         assertEquals("Two target", catcher2.getEvents().get(1));
         // test multi-param and private method and callback from io thread
         ParamsFetcher paramsFetcher = new ParamsFetcher();
-        RxBus.singleInstance.register(paramsFetcher);
-        Thread.sleep(TIME); // because of register is async
-        RxBus.singleInstance.post(ParamsFetcher.EVENT, "Zhang san", 22, true);
+        RxBus.singleInstance.registerAsync(paramsFetcher);
+        Thread.sleep(TIME); // because of registerAsync is async
+        RxBus.singleInstance.postSync(ParamsFetcher.EVENT, "Zhang san", 22, true);
         assertEquals(null, paramsFetcher.getName());
         Thread.sleep(TIME); // because of onParam is async
         assertEquals("Zhang san", paramsFetcher.getName());
         assertEquals(22, paramsFetcher.getAge());
         assertEquals(true, paramsFetcher.isStudent());
-        // test unregister
+        // test unregisterAsync
         flag = false;
         Object object = new Object() {
             @Subscribe(code = CODE, scheduler = Subscribe.SCHEDULER_CURRENT_THREAD)
@@ -87,33 +85,33 @@ public class TestRxBus {
                 flag = true;
             }
         };
-        RxBus.singleInstance.register(object);
-        Thread.sleep(TIME); // because of register is async
-        RxBus.singleInstance.post(CODE);
+        RxBus.singleInstance.registerAsync(object);
+        Thread.sleep(TIME); // because of registerAsync is async
+        RxBus.singleInstance.postSync(CODE);
         assertEquals(true, flag);
         flag = false;
-        RxBus.singleInstance.unregister(object);
-        Thread.sleep(TIME); // because of unregister is async
-        RxBus.singleInstance.post(CODE);
+        RxBus.singleInstance.unregisterAsync(object);
+        Thread.sleep(TIME); // because of unregisterAsync is async
+        RxBus.singleInstance.postSync(CODE);
         assertEquals(false, flag);
         flag = false;
-        RxBus.singleInstance.register(object);
-        RxBus.singleInstance.post(CODE);
-        assertEquals(false, flag); // message discard because of register finish yet
-        Thread.sleep(TIME); // because of register is async
-        RxBus.singleInstance.post(CODE);
+        RxBus.singleInstance.registerAsync(object);
+        RxBus.singleInstance.postSync(CODE);
+        assertEquals(false, flag); // message discard because of registerAsync finish yet
+        Thread.sleep(TIME); // because of registerAsync is async
+        RxBus.singleInstance.postSync(CODE);
         assertEquals(true, flag);
         // test sync
         RxBus.singleInstance.unregisterSync(object);
         flag = false;
-        RxBus.singleInstance.post(CODE);
+        RxBus.singleInstance.postSync(CODE);
         assertEquals(false, flag);
         Thread.sleep(TIME);
-        RxBus.singleInstance.post(CODE);
+        RxBus.singleInstance.postSync(CODE);
         assertEquals(false, flag);
         flag = false;
         RxBus.singleInstance.registerSync(object);
-        RxBus.singleInstance.post(CODE); // no sleep, because of sync
+        RxBus.singleInstance.postSync(CODE); // no sleep, because of sync
         assertEquals(true, flag);
         // test custom scheduler
         flag = false;
@@ -134,65 +132,71 @@ public class TestRxBus {
             }
         };
         RxBus.singleInstance.registerSync(customSchedulerObj);
-        RxBus.singleInstance.post(45530);
+        RxBus.singleInstance.postSync(45530);
         Thread.sleep(TIME);
         assertEquals(true, flag);
         assertEquals(true, beforeExecute);
+        // test postAsync
+        flag = false;
+        RxBus.singleInstance.postAsync(CODE);
+        assertEquals(false, flag);
+        Thread.sleep(TIME);
+        assertEquals(true, flag);
     }
 
     @Test
     public void doExceptionTest() {
         try {
-            RxBus.singleInstance.register(null);
-            fail("Should have thrown an NullPointerException on register.");
+            RxBus.singleInstance.registerAsync(null);
+            fail("Should have thrown an NullPointerException on registerAsync.");
         } catch (NullPointerException e) {
         }
         try {
             RxBus.singleInstance.registerSync(null);
-            fail("Should have thrown an NullPointerException on register.");
+            fail("Should have thrown an NullPointerException on registerAsync.");
         } catch (NullPointerException e) {
         }
         try {
-            RxBus.singleInstance.unregister(null);
+            RxBus.singleInstance.unregisterAsync(null);
         } catch (NullPointerException e) {
-            fail("Should not have thrown an NullPointerException on unregister.");
+            fail("Should not have thrown an NullPointerException on unregisterAsync.");
         }
         try {
             RxBus.singleInstance.unregisterSync(null);
         } catch (NullPointerException e) {
-            fail("Should not have thrown an NullPointerException on unregister.");
+            fail("Should not have thrown an NullPointerException on unregisterAsync.");
         }
         AmbiguousFetcher fetcher = new AmbiguousFetcher();
         RxBus.singleInstance.registerSync(fetcher);
         fetcher.setFromString(null);
-        RxBus.singleInstance.post(AmbiguousFetcher.AMBIGUOUS, null);
+        RxBus.singleInstance.postSync(AmbiguousFetcher.AMBIGUOUS, null);
         assertEquals(null, fetcher.getFromString());
-        RxBus.singleInstance.post(AmbiguousFetcher.AMBIGUOUS, (Object[])null);
+        RxBus.singleInstance.postSync(AmbiguousFetcher.AMBIGUOUS, (Object[])null);
         assertEquals(null, fetcher.getFromString());
-        RxBus.singleInstance.post(AmbiguousFetcher.AMBIGUOUS, (String)null);
+        RxBus.singleInstance.postSync(AmbiguousFetcher.AMBIGUOUS, (String)null);
         assertEquals(null, fetcher.getFromString());
         fetcher.setFromString(null);
-        RxBus.singleInstance.postWithType(AmbiguousFetcher.AMBIGUOUS, String.class, null);
+        RxBus.singleInstance.postWithTypeSync(AmbiguousFetcher.AMBIGUOUS, String.class, null);
         assertEquals(true, fetcher.getFromString());
         fetcher.setFromString(null);
-        RxBus.singleInstance.postWithType(AmbiguousFetcher.AMBIGUOUS, Integer.class, null);
+        RxBus.singleInstance.postWithTypeSync(AmbiguousFetcher.AMBIGUOUS, Integer.class, null);
         assertEquals(false, fetcher.getFromString());
         fetcher.setFromString(null);
-        RxBus.singleInstance.postWithType(AmbiguousFetcher.AMBIGUOUS, Object[].class, null);
+        RxBus.singleInstance.postWithTypeSync(AmbiguousFetcher.AMBIGUOUS, Object[].class, null);
         assertEquals(null, fetcher.getFromString());
         fetcher.setFromString(null);
-        RxBus.singleInstance.post(AmbiguousFetcher.AMBIGUOUS, 3);
+        RxBus.singleInstance.postSync(AmbiguousFetcher.AMBIGUOUS, 3);
         assertEquals(false, fetcher.getFromString());
         fetcher.setFromString(null);
-        RxBus.singleInstance.post(AmbiguousFetcher.AMBIGUOUS, 3.0f);
+        RxBus.singleInstance.postSync(AmbiguousFetcher.AMBIGUOUS, 3.0f);
         assertEquals(null, fetcher.getFromString());
         fetcher.setFromString(null);
-        RxBus.singleInstance.post(AmbiguousFetcher.AMBIGUOUS, "DAO");
+        RxBus.singleInstance.postSync(AmbiguousFetcher.AMBIGUOUS, "DAO");
         assertEquals(true, fetcher.getFromString());
-        RxBus.singleInstance.post(AmbiguousFetcher.NULL, null, "Lee");
+        RxBus.singleInstance.postSync(AmbiguousFetcher.NULL, null, "Lee");
         assertEquals("a", fetcher.getA());
         assertEquals("b", fetcher.getB());
-        RxBus.singleInstance.postWithType(AmbiguousFetcher.NULL, String.class, null, String.class, "Lee");
+        RxBus.singleInstance.postWithTypeSync(AmbiguousFetcher.NULL, String.class, null, String.class, "Lee");
         assertEquals(null, fetcher.getA());
         assertEquals("Lee", fetcher.getB());
     }
