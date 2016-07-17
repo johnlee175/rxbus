@@ -9,6 +9,7 @@ import com.squareup.otto.Bus;
 import com.squareup.otto.ThreadEnforcer;
 
 /**
+ * Try more times
  * @author John Kenrinus Lee
  * @version 2016-07-12
  */
@@ -27,9 +28,9 @@ public class TestPerform {
         for (int i = 0; i < LOOP; ++i) {
             long start = System.nanoTime();
             rxBus.registerSync(catcher1);
-//            rxBus.registerSync(catcher2);
+            rxBus.registerSync(catcher2);
             rxBus.unregisterSync(catcher1);
-//            rxBus.unregisterSync(catcher2);
+            rxBus.unregisterSync(catcher2);
             long end = System.nanoTime();
             if (rxavg == 0) {
                 rxavg = end - start;
@@ -46,9 +47,9 @@ public class TestPerform {
         for (int i = 0; i < LOOP; ++i) {
             long start = System.nanoTime();
             bus.register(catcher3);
-//            bus.register(catcher4);
+            bus.register(catcher4);
             bus.unregister(catcher3);
-//            bus.unregister(catcher4);
+            bus.unregister(catcher4);
             long end = System.nanoTime();
             if (ottoavg == 0) {
                 ottoavg = end - start;
@@ -65,9 +66,9 @@ public class TestPerform {
         for (int i = 0; i < LOOP; ++i) {
             long start = System.nanoTime();
             eventBus.register(catcher5);
-//            eventBus.register(catcher6);
+            eventBus.register(catcher6);
             eventBus.unregister(catcher5);
-//            eventBus.unregister(catcher6);
+            eventBus.unregister(catcher6);
             long end = System.nanoTime();
             if (ebavg == 0) {
                 ebavg = end - start;

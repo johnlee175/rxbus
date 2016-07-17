@@ -38,18 +38,18 @@ public class ApplicationBase extends Application {
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
-                RxBus.singleInstance.postAsync(3, "zhangsan is boy");
-                RxBus.singleInstance.postAsync(4, "Welcome", 220);
-                RxBus.singleInstance.postAsync(2);
-                RxBus.singleInstance.unregisterAsync(ApplicationBase.this);
+                RxBus.singleInstance.postSync(3, "zhangsan is boy");
+                RxBus.singleInstance.postSync(4, "Welcome", 220);
+                RxBus.singleInstance.postSync(2);
+                RxBus.singleInstance.unregisterSync(ApplicationBase.this);
                 try {
                     Thread.sleep(5000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
-                RxBus.singleInstance.postSync(3, "lisi is boy");
-                RxBus.singleInstance.postSync(2);
-                RxBus.singleInstance.postSync(4, "Welcome", 220);
+                RxBus.singleInstance.postAsync(3, "lisi is boy");
+                RxBus.singleInstance.postAsync(2);
+                RxBus.singleInstance.postAsync(4, "Welcome", 220);
             }
         }.start();
     }

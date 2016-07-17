@@ -6,6 +6,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -20,6 +21,7 @@ public enum RxBus {
     singleInstance;
 
     private static final List<Class<?>> builtinBoxingClasses = createBuiltinBoxingClasses();
+    private static final ClassSubscribeEntryCache cache = new ClassSubscribeEntryCache();
 
     private static List<Class<?>> createBuiltinBoxingClasses() {
         ArrayList<Class<?>> classes = new ArrayList<>(8);
@@ -34,9 +36,38 @@ public enum RxBus {
         return Collections.unmodifiableList(classes);
     }
 
+    private static List<SubscribeEntry> findSubscribes(final Class<?> subscriberClass) {
+        if (subscriberClass == null) {
+            return null;
+        }
+        synchronized(cache) {
+            List<SubscribeEntry> subscribeEntries = cache.get(subscriberClass);
+            if (subscribeEntries != null) {
+                return subscribeEntries;
+            } else {
+                subscribeEntries = new ArrayList<>();
+                final Method[] declaredMethods = subscriberClass.getDeclaredMethods();
+                for (Method method : declaredMethods) {
+                    if (method.isAnnotationPresent(Subscribe.class)) {
+                        method.setAccessible(true);
+                        final Subscribe subscribe = method.getAnnotation(Subscribe.class);
+                        final int code = subscribe.code();
+                        final int schedulerCode = subscribe.scheduler();
+                        final SubscribeEntry entry = new SubscribeEntry(code, schedulerCode,
+                                subscriberClass, method, method.getParameterTypes());
+                        subscribeEntries.add(entry);
+                    }
+                }
+                cache.put(subscriberClass, subscribeEntries);
+                return subscribeEntries;
+            }
+        }
+    }
+
     private final byte[] subscribeLock = new byte[0];
     private final Map<Integer, Set<SubscribeEntry>> codeSubscribeMethodsMap;
     private final Map<SubscriberKey, Set<Integer>> subscriberCodesMap;
+    private final Map<SubscribeEntry, Set<SubscriberKey>> entrySubscriberMap;
     private final ConcurrentHashMap<Integer, Scheduler> customSchedulerMap;
     private final Scheduler scheduler;
     private boolean validateParametersMatches;
@@ -44,6 +75,7 @@ public enum RxBus {
     RxBus() {
         codeSubscribeMethodsMap = new HashMap<>();
         subscriberCodesMap = new HashMap<>();
+        entrySubscriberMap = new HashMap<>();
         customSchedulerMap = new ConcurrentHashMap<>();
         scheduler = Schedulers.io();
         validateParametersMatches = true;
@@ -57,6 +89,16 @@ public enum RxBus {
         }
         customSchedulerMap.clear();
         scheduler.die();
+    }
+
+    /**
+     * for fast extrac method info which with subscribe annotation, cache the relation class and methods,
+     * you can set the cache size, should not be negative, the default value is 16
+     */
+    public void setClassCacheCapacity(int capacity) {
+        if (capacity >= 0) {
+            cache.lruCapacity = capacity;
+        }
     }
 
     /** if set true, will check parameters before call target callback method. */
@@ -193,13 +235,19 @@ public enum RxBus {
         synchronized(subscribeLock) {
             final Set<SubscribeEntry> entrySet = codeSubscribeMethodsMap.get(message.code);
             if (entrySet != null) {
-                for (final SubscribeEntry subscribeEntry : entrySet) {
-                    getScheduler(subscribeEntry.scheduler).schedule(new Runnable() {
-                        @Override
-                        public void run() {
-                            onEvent(message, subscribeEntry);
+                Set<SubscriberKey> keySet;
+                for (final SubscribeEntry entry : entrySet) {
+                    keySet = entrySubscriberMap.get(entry);
+                    if (keySet != null) {
+                        for (final SubscriberKey key : keySet) {
+                            getScheduler(entry.scheduler).schedule(new Runnable() {
+                                @Override
+                                public void run() {
+                                    onEvent(message, entry, key.subscriber);
+                                }
+                            });
                         }
-                    });
+                    }
                 }
             }
         }
@@ -208,34 +256,33 @@ public enum RxBus {
     private void doRegister(final Object subscriber) {
         synchronized(subscribeLock) {
             final SubscriberKey subscriberKey = new SubscriberKey(subscriber);
-            Set<Integer> codes = subscriberCodesMap.get(subscriberKey);
-            if (codes != null && !codes.isEmpty()) {
+            Set<Integer> codeSet = subscriberCodesMap.get(subscriberKey);
+            if (codeSet != null && !codeSet.isEmpty()) {
                 return;
             }
-            final Class<?> subscriberClass = subscriber.getClass();
-            final Method[] declaredMethods = subscriberClass.getDeclaredMethods();
+            final List<SubscribeEntry> subscribes = findSubscribes(subscriber.getClass());
             Set<SubscribeEntry> entrySet;
-            for (Method method : declaredMethods) {
-                if (method.isAnnotationPresent(Subscribe.class)) {
-                    method.setAccessible(true);
-                    final Subscribe subscribe = method.getAnnotation(Subscribe.class);
-                    final int code = subscribe.code();
-                    final int schedulerCode = subscribe.scheduler();
-                    final SubscribeEntry entry = new SubscribeEntry(code, schedulerCode, subscriber,
-                            subscriberClass, method, method.getParameterTypes());
-                    entrySet = codeSubscribeMethodsMap.get(code);
-                    if (entrySet == null) {
-                        entrySet = new HashSet<>();
-                        codeSubscribeMethodsMap.put(code, entrySet);
-                    }
-                    entrySet.add(entry);
-                    codes = subscriberCodesMap.get(subscriberKey);
-                    if (codes == null) {
-                        codes = new HashSet<>();
-                        subscriberCodesMap.put(subscriberKey, codes);
-                    }
-                    codes.add(code);
+            Set<SubscriberKey> keySet;
+            for (SubscribeEntry entry : subscribes) {
+                final int code = entry.code;
+                entrySet = codeSubscribeMethodsMap.get(code);
+                if (entrySet == null) {
+                    entrySet = new HashSet<>();
+                    codeSubscribeMethodsMap.put(code, entrySet);
                 }
+                entrySet.add(entry);
+                codeSet = subscriberCodesMap.get(subscriberKey);
+                if (codeSet == null) {
+                    codeSet = new HashSet<>();
+                    subscriberCodesMap.put(subscriberKey, codeSet);
+                }
+                codeSet.add(code);
+                keySet = entrySubscriberMap.get(entry);
+                if (keySet == null) {
+                    keySet = new HashSet<>();
+                    entrySubscriberMap.put(entry, keySet);
+                }
+                keySet.add(subscriberKey);
             }
         }
     }
@@ -243,16 +290,27 @@ public enum RxBus {
     private void doUnregister(final Object subscriber) {
         synchronized(subscribeLock) {
             final SubscriberKey subscriberKey = new SubscriberKey(subscriber);
-            final Set<Integer> codes = subscriberCodesMap.remove(subscriberKey);
-            if (codes != null) {
-                for (int code : codes) {
+            final Set<Integer> codeSet = subscriberCodesMap.remove(subscriberKey);
+            if (codeSet != null) {
+                for (int code : codeSet) {
                     final Set<SubscribeEntry> entrySet = codeSubscribeMethodsMap.get(code);
                     if (entrySet != null) {
                         SubscribeEntry[] entries = new SubscribeEntry[0];
                         entries = entrySet.toArray(entries);
-                        for (SubscribeEntry subscribeEntry : entries) {
-                            if (subscribeEntry.instance == subscriber) {
-                                entrySet.remove(subscribeEntry);
+                        for (SubscribeEntry entry : entries) {
+                            final Set<SubscriberKey> keySet = entrySubscriberMap.get(entry);
+                            if (keySet != null) {
+                                SubscriberKey[] keys = new SubscriberKey[0];
+                                keys = keySet.toArray(keys);
+                                for (SubscriberKey key : keys) {
+                                    if (key.subscriber == subscriber) {
+                                        keySet.remove(key);
+                                    }
+                                }
+                                if (keySet.isEmpty()) {
+                                    entrySubscriberMap.remove(entry);
+                                    entrySet.remove(entry);
+                                }
                             }
                         }
                     }
@@ -261,8 +319,11 @@ public enum RxBus {
         }
     }
 
-    private void onEvent(Message message, SubscribeEntry subscribeEntry) {
+    private void onEvent(Message message, SubscribeEntry subscribeEntry, Object instance) {
         try {
+            if (message == null || subscribeEntry == null || instance == null) {
+                return;
+            }
             final Object[] parameters;
             if (!message.isTypeInfoInParameters) {
                 parameters = message.parameters;
@@ -287,7 +348,7 @@ public enum RxBus {
                     return;
                 }
             }
-            subscribeEntry.method.invoke(subscribeEntry.instance, parameters);
+            subscribeEntry.method.invoke(instance, parameters);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -359,17 +420,15 @@ public enum RxBus {
     private static final class SubscribeEntry {
         final int code;
         final int scheduler;
-        final Object instance;
         final Class<?> instanceClass;
         final Method method;
         final Class<?>[] parametersClasses;
         private final int hashCode;
 
-        SubscribeEntry(int code, int scheduler, Object instance, Class<?> instanceClass,
+        SubscribeEntry(int code, int scheduler, Class<?> instanceClass,
                        Method method, Class<?>[] parametersClasses) {
             this.code = code;
             this.scheduler = scheduler;
-            this.instance = instance;
             this.instanceClass = instanceClass;
             this.method = method;
             this.parametersClasses = parametersClasses;
@@ -383,8 +442,7 @@ public enum RxBus {
                 sb.append(clazz.getName()).append(';');
             }
             String signature = sb.append(')').toString();
-            int result = 31 * code + signature.hashCode();
-            return 31 * result + System.identityHashCode(instance);
+            return  31 * code + signature.hashCode();
         }
 
         @Override
@@ -461,6 +519,19 @@ public enum RxBus {
         @Override
         public int hashCode() {
             return System.identityHashCode(subscriber);
+        }
+    }
+
+    private static final class ClassSubscribeEntryCache extends LinkedHashMap<Class<?>, List<SubscribeEntry>> {
+        volatile int lruCapacity = 16;
+        ClassSubscribeEntryCache() {
+            super(32, 0.75F, true);
+        }
+
+        @Override
+        protected boolean removeEldestEntry(Entry<Class<?>, List<SubscribeEntry>> eldest) {
+//            System.out.println("removeEldestEntry: { " + eldest.getKey() + " : " + eldest.getValue() + " }");
+            return size() > lruCapacity;
         }
     }
 }
