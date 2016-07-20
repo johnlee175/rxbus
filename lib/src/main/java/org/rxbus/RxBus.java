@@ -529,7 +529,7 @@ public enum RxBus {
         }
 
         @Override
-        protected boolean removeEldestEntry(Entry<Class<?>, List<SubscribeEntry>> eldest) {
+        protected boolean removeEldestEntry(Map.Entry<Class<?>, List<SubscribeEntry>> eldest) {
 //            System.out.println("removeEldestEntry: { " + eldest.getKey() + " : " + eldest.getValue() + " }");
             return size() > lruCapacity;
         }
