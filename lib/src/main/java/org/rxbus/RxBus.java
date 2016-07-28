@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * A EventBus implements by RxJava/RxAndroid.
+ * TODO should I support event bus cross multi-process?
  * @author John Kenrinus Lee
  * @version 2016-07-10
  */

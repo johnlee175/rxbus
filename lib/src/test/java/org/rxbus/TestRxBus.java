@@ -77,6 +77,16 @@ public class TestRxBus {
         assertEquals("Zhang san", paramsFetcher.getName());
         assertEquals(22, paramsFetcher.getAge());
         assertEquals(true, paramsFetcher.isStudent());
+        // test static method
+        StaticCatcher catcherX = new StaticCatcher();
+        RxBus.singleInstance.registerSync(catcherX);
+        RxBus.singleInstance.postSync(StaticCatcher.EVENT, "TOC");
+        assertEquals("StaticCatcherTOC", StaticCatcher.staticString);
+        RxBus.singleInstance.unregisterSync(catcherX);
+        RxBus.singleInstance.registerSync(StaticCatcher.class);
+        RxBus.singleInstance.postSync(StaticCatcher.EVENT, "NONONO");
+        assertNotEquals("StaticCatcherNONONO", StaticCatcher.staticString);
+        RxBus.singleInstance.unregisterSync(StaticCatcher.class);
         // test unregisterAsync
         flag = false;
         Object object = new Object() {
