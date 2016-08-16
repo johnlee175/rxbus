@@ -18,7 +18,7 @@ android.libraryVariants.all { variant ->
     task.dependsOn variant.javaCompile
     task.from variant.javaCompile.destinationDir
     task.baseName = 'rxbus'
-    task.version = '1.0.1'
+    task.version = '1.0.2'
     task.doLast {
         copy {
             from task.archivePath

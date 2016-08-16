@@ -46,9 +46,17 @@ public enum RxBus {
             if (subscribeEntries != null) {
                 return subscribeEntries;
             } else {
-                subscribeEntries = new ArrayList<>();
+                final Method[] methods = subscriberClass.getMethods();
+                final HashSet<Method> methodSet = new HashSet<>();
+                for (Method method : methods) {
+                    methodSet.add(method);
+                }
                 final Method[] declaredMethods = subscriberClass.getDeclaredMethods();
                 for (Method method : declaredMethods) {
+                    methodSet.add(method);
+                }
+                subscribeEntries = new ArrayList<>();
+                for (Method method : methodSet) {
                     if (method.isAnnotationPresent(Subscribe.class)) {
                         method.setAccessible(true);
                         final Subscribe subscribe = method.getAnnotation(Subscribe.class);
