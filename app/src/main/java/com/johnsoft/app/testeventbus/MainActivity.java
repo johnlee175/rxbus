@@ -3,8 +3,10 @@ package com.johnsoft.app.testeventbus;
 import org.rxbus.RxBus;
 import org.rxbus.Subscribe;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
+import android.view.View;
 
 public class MainActivity extends AppCompatActivity {
     private Just olds;
@@ -13,17 +15,26 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        RxBus.singleInstance.register(this);
-        RxBus.singleInstance.register(this);
+        RxBus.singleInstance.registerSync(this);
+        RxBus.singleInstance.registerSync(this);
         olds = new Just();
         news = new Just();
+        final View btn = findViewById(R.id.clickme);
+        if (btn != null) {
+            btn.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    startActivity(new Intent(MainActivity.this, TestActivity.class));
+                }
+            });
+        }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        RxBus.singleInstance.unregister(this);
-        RxBus.singleInstance.unregister(this);
+        RxBus.singleInstance.unregisterSync(this);
+        RxBus.singleInstance.unregisterSync(this);
     }
 
     @Subscribe(code = 2, scheduler = Subscribe.SCHEDULER_CURRENT_THREAD)

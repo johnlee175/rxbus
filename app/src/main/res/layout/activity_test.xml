@@ -10,8 +10,8 @@
         android:paddingBottom="@dimen/activity_vertical_margin"
         tools:context="com.johnsoft.app.testeventbus.MainActivity">
 
-    <Button android:id="@+id/clickme"
-            android:text="Test With Local Broadcast"
+    <Button android:id="@+id/btn"
+            android:text="Unregister"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"/>
 </RelativeLayout>

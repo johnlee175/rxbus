@@ -29,27 +29,27 @@ public class ApplicationBase extends Application {
     @Override
     public void onCreate() {
         super.onCreate();
-        RxBus.singleInstance.register(this);
+        RxBus.singleInstance.registerAsync(this);
         new Thread("delay") {
             @Override
             public void run() {
                 try {
-                    Thread.sleep(5000);
+                    Thread.sleep(4000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
-                RxBus.singleInstance.post(3, "zhangsan is boy");
-                RxBus.singleInstance.post(4, "Welcome", 220);
-                RxBus.singleInstance.post(2);
-                RxBus.singleInstance.unregister(ApplicationBase.this);
+                RxBus.singleInstance.postSync(3, "zhangsan is boy");
+                RxBus.singleInstance.postSync(4, "Welcome", 220);
+                RxBus.singleInstance.postSync(2);
+                RxBus.singleInstance.unregisterSync(ApplicationBase.this);
                 try {
-                    Thread.sleep(5000);
+                    Thread.sleep(2000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
-                RxBus.singleInstance.post(3, "lisi is boy");
-                RxBus.singleInstance.post(2);
-                RxBus.singleInstance.post(4, "Welcome", 220);
+                RxBus.singleInstance.postAsync(3, "lisi is boy");
+                RxBus.singleInstance.postAsync(2);
+                RxBus.singleInstance.postAsync(4, "Welcome", 220);
             }
         }.start();
     }

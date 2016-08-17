@@ -4,31 +4,25 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-import rx.Observable;
-import rx.Scheduler;
-import rx.Subscription;
-import rx.functions.Action1;
-import rx.functions.Func1;
-import rx.schedulers.Schedulers;
-import rx.subjects.PublishSubject;
-import rx.subjects.SerializedSubject;
-import rx.subjects.Subject;
-
 /**
  * A EventBus implements by RxJava/RxAndroid.
+ * TODO should I support event bus cross multi-process?
  * @author John Kenrinus Lee
  * @version 2016-07-10
  */
-// TODO if use for-i or for-each instead rxjava-stream on next version or not?
 public enum RxBus {
     singleInstance;
 
     private static final List<Class<?>> builtinBoxingClasses = createBuiltinBoxingClasses();
+    private static final ClassSubscribeEntryCache cache = new ClassSubscribeEntryCache();
 
     private static List<Class<?>> createBuiltinBoxingClasses() {
         ArrayList<Class<?>> classes = new ArrayList<>(8);
@@ -43,16 +37,77 @@ public enum RxBus {
         return Collections.unmodifiableList(classes);
     }
 
-    private final Subject<Object, Object> bus;
-    private final ConcurrentHashMap<SubscriberKey, Set<Subscription>> subscriberMap;
+    private static List<SubscribeEntry> findSubscribes(final Class<?> subscriberClass) {
+        if (subscriberClass == null) {
+            return null;
+        }
+        synchronized(cache) {
+            List<SubscribeEntry> subscribeEntries = cache.get(subscriberClass);
+            if (subscribeEntries != null) {
+                return subscribeEntries;
+            } else {
+                final Method[] methods = subscriberClass.getMethods();
+                final HashSet<Method> methodSet = new HashSet<>();
+                for (Method method : methods) {
+                    methodSet.add(method);
+                }
+                final Method[] declaredMethods = subscriberClass.getDeclaredMethods();
+                for (Method method : declaredMethods) {
+                    methodSet.add(method);
+                }
+                subscribeEntries = new ArrayList<>();
+                for (Method method : methodSet) {
+                    if (method.isAnnotationPresent(Subscribe.class)) {
+                        method.setAccessible(true);
+                        final Subscribe subscribe = method.getAnnotation(Subscribe.class);
+                        final int code = subscribe.code();
+                        final int schedulerCode = subscribe.scheduler();
+                        final SubscribeEntry entry = new SubscribeEntry(code, schedulerCode,
+                                subscriberClass, method, method.getParameterTypes());
+                        subscribeEntries.add(entry);
+                    }
+                }
+                cache.put(subscriberClass, subscribeEntries);
+                return subscribeEntries;
+            }
+        }
+    }
+
+    private final byte[] subscribeLock = new byte[0];
+    private final Map<Integer, Set<SubscribeEntry>> codeSubscribeMethodsMap;
+    private final Map<SubscriberKey, Set<Integer>> subscriberCodesMap;
+    private final Map<SubscribeEntry, Set<SubscriberKey>> entrySubscriberMap;
     private final ConcurrentHashMap<Integer, Scheduler> customSchedulerMap;
+    private final Scheduler scheduler;
     private boolean validateParametersMatches;
 
     RxBus() {
-        bus = new SerializedSubject<>(PublishSubject.create());
-        subscriberMap = new ConcurrentHashMap<>();
+        codeSubscribeMethodsMap = new HashMap<>();
+        subscriberCodesMap = new HashMap<>();
+        entrySubscriberMap = new HashMap<>();
         customSchedulerMap = new ConcurrentHashMap<>();
+        scheduler = Schedulers.io();
         validateParametersMatches = true;
+    }
+
+    /** destroy resource if don't use this class again */
+    public void destroySync() {
+        synchronized(subscribeLock) {
+            codeSubscribeMethodsMap.clear();
+            subscriberCodesMap.clear();
+        }
+        customSchedulerMap.clear();
+        scheduler.die();
+    }
+
+    /**
+     * for fast extrac method info which with subscribe annotation, cache the relation class and methods,
+     * you can set the cache size, should not be negative, the default value is 16
+     */
+    public void setClassCacheCapacity(int capacity) {
+        if (capacity >= 0) {
+            cache.lruCapacity = capacity;
+        }
     }
 
     /** if set true, will check parameters before call target callback method. */
@@ -80,35 +135,77 @@ public enum RxBus {
     }
 
     /**
-     * post a event for no null parameter, if use null parameter, no any callback happened
+     * post a event sync for no null parameter, if use null parameter, no any callback happened
      * @param code event code or command code or a message type
      * @param events target callback method parameters,
      *               must ensure that any parameter cannot be null, like null, (Object[])null, (String)null
-     * @see #postWithType(int, Object...)
+     * @see #postWithTypeSync(int, Object...)
      */
-    public void post(int code, Object...events) {
-        bus.onNext(new Message(code, false, events));
+    public void postSync(final int code, final Object...events) {
+        doPostMessage(new Message(code, false, events));
     }
 
     /**
-     * post a event for which has null parameter
+     * post a event async for no null parameter, if use null parameter, no any callback happened
+     * @param code event code or command code or a message type
+     * @param events target callback method parameters,
+     *               must ensure that any parameter cannot be null, like null, (Object[])null, (String)null
+     * @see #postWithTypeAsync(int, Object...)
+     */
+    public void postAsync(final int code, final Object...events) {
+        scheduler.schedule(new Runnable() {
+            @Override
+            public void run() {
+                doPostMessage(new Message(code, false, events));
+            }
+        });
+    }
+
+    /**
+     * post a event sync for which has null parameter
      * @param code event code or command code or a message type
      * @param events target callback method types and parameters, like:
      *               target: @Subscribe(..) doSomething(String a, String b)
-     *               origin: post((String)null, "Lee") // don't work
-     *               apply:  postWithType(String.class, null, String.class, "Lee") // work
-     * @see #post(int, Object...)
+     *               origin: postSync((String)null, "Lee") // don't work
+     *               apply:  postWithTypeSync(String.class, null, String.class, "Lee") // work
+     * @see #postSync(int, Object...)
      */
-    public void postWithType(int code, Object...events) {
-        bus.onNext(new Message(code, true, events));
+    public void postWithTypeSync(final int code, final Object...events) {
+        doPostMessage(new Message(code, true, events));
+    }
+
+    /**
+     * post a event sync for which has null parameter
+     * @param code event code or command code or a message type
+     * @param events target callback method types and parameters, like:
+     *               target: @Subscribe(..) doSomething(String a, String b)
+     *               origin: postAsync((String)null, "Lee") // don't work
+     *               apply:  postWithTypeAsync(String.class, null, String.class, "Lee") // work
+     * @see #postAsync(int, Object...)
+     */
+    public void postWithTypeAsync(final int code, final Object...events) {
+        scheduler.schedule(new Runnable() {
+            @Override
+            public void run() {
+                doPostMessage(new Message(code, true, events));
+            }
+        });
     }
 
     /**
      * register a event/message/command receiver async
      * @param subscriber callback target, must be not null
      */
-    public void register(final Object subscriber) {
-        doRegister(subscriber, Schedulers.computation());
+    public void registerAsync(final Object subscriber) {
+        if (subscriber == null) {
+            throw new NullPointerException("registerAsync: subscriber is null");
+        }
+        scheduler.schedule(new Runnable() {
+            @Override
+            public void run() {
+                doRegister(subscriber);
+            }
+        });
     }
 
     /**
@@ -116,15 +213,23 @@ public enum RxBus {
      * @param subscriber callback target, must be not null
      */
     public void registerSync(final Object subscriber) {
-        doRegister(subscriber, Schedulers.immediate());
+        if (subscriber == null) {
+            throw new NullPointerException("registerSync: subscriber is null");
+        }
+        doRegister(subscriber);
     }
 
     /**
      * cancel register a event/message/command receiver async
      * @param subscriber callback target, can be null
      */
-    public void unregister(final Object subscriber) {
-        doUnregister(subscriber, Schedulers.computation());
+    public void unregisterAsync(final Object subscriber) {
+        scheduler.schedule(new Runnable() {
+            @Override
+            public void run() {
+                doUnregister(subscriber);
+            }
+        });
     }
 
     /**
@@ -132,75 +237,102 @@ public enum RxBus {
      * @param subscriber callback target, can be null
      */
     public void unregisterSync(final Object subscriber) {
-        doUnregister(subscriber, Schedulers.immediate());
+        doUnregister(subscriber);
     }
 
-    private void doRegister(final Object subscriber, final Scheduler scheduler) {
-        final SubscriberKey subscriberKey = new SubscriberKey(subscriber);
-        if (subscriberMap.containsKey(subscriberKey)) {
-            return;
-        }
-        final Class<?> subscriberClass = subscriber.getClass();
-        Observable.from(subscriberClass.getDeclaredMethods())
-            .observeOn(scheduler)
-            .filter(new Func1<Method, Boolean>() {
-                @Override
-                public Boolean call(Method method) {
-                    return method.isAnnotationPresent(Subscribe.class);
-                }
-            })
-            .forEach(new Action1<Method>() {
-                @Override
-                public void call(Method method) {
-                    method.setAccessible(true);
-                    final Subscribe subscribe = method.getAnnotation(Subscribe.class);
-                    final int code = subscribe.code();
-                    final int scheduler = subscribe.scheduler();
-                    final SubscribeEntry entry = new SubscribeEntry(code, scheduler,
-                            subscriberClass, method, method.getParameterTypes());
-                    Subscription subscription = bus.filter(new Func1<Object, Boolean>() {
-                            @Override
-                            public Boolean call(Object message) {
-                                return Message.class.isInstance(message) && ((Message) message).code == code;
-                            }
-                        })
-                        .observeOn(getScheduler(scheduler))
-                        .subscribe(new Action1<Object>() {
-                            @Override
-                            public void call(Object message) {
-                                onEvent((Message) message, entry, subscriber);
-                            }
-                        });
-                    final Set<Subscription> newScriptionSet = Collections
-                            .synchronizedSet(new HashSet<Subscription>());
-                    final Set<Subscription> oldScriptionSet = subscriberMap
-                            .putIfAbsent(subscriberKey, newScriptionSet);
-                    final Set<Subscription> subscriptionSet;
-                    if (oldScriptionSet != null) {
-                        subscriptionSet = oldScriptionSet;
-                    } else {
-                        subscriptionSet = newScriptionSet;
+    private void doPostMessage(final Message message) {
+        synchronized(subscribeLock) {
+            final Set<SubscribeEntry> entrySet = codeSubscribeMethodsMap.get(message.code);
+            if (entrySet != null) {
+                Set<SubscriberKey> keySet;
+                for (final SubscribeEntry entry : entrySet) {
+                    keySet = entrySubscriberMap.get(entry);
+                    if (keySet != null) {
+                        for (final SubscriberKey key : keySet) {
+                            getScheduler(entry.scheduler).schedule(new Runnable() {
+                                @Override
+                                public void run() {
+                                    onEvent(message, entry, key.subscriber);
+                                }
+                            });
+                        }
                     }
-                    subscriptionSet.add(subscription);
                 }
-            });
-    }
-
-    private void doUnregister(final Object subscriber, final Scheduler scheduler) {
-        final SubscriberKey subscriberKey = new SubscriberKey(subscriber);
-        final Set<Subscription> subscriptionSet = subscriberMap.remove(subscriberKey);
-        if (subscriptionSet != null) {
-            Observable.from(subscriptionSet).observeOn(scheduler).forEach(new Action1<Subscription>() {
-                @Override
-                public void call(Subscription subscription) {
-                    subscription.unsubscribe();
-                }
-            });
+            }
         }
     }
 
-    private void onEvent(Message message, SubscribeEntry subscribeEntry, Object subscriber) {
+    private void doRegister(final Object subscriber) {
+        synchronized(subscribeLock) {
+            final SubscriberKey subscriberKey = new SubscriberKey(subscriber);
+            Set<Integer> codeSet = subscriberCodesMap.get(subscriberKey);
+            if (codeSet != null && !codeSet.isEmpty()) {
+                return;
+            }
+            final List<SubscribeEntry> subscribes = findSubscribes(subscriber.getClass());
+            Set<SubscribeEntry> entrySet;
+            Set<SubscriberKey> keySet;
+            for (SubscribeEntry entry : subscribes) {
+                final int code = entry.code;
+                entrySet = codeSubscribeMethodsMap.get(code);
+                if (entrySet == null) {
+                    entrySet = new HashSet<>();
+                    codeSubscribeMethodsMap.put(code, entrySet);
+                }
+                entrySet.add(entry);
+                codeSet = subscriberCodesMap.get(subscriberKey);
+                if (codeSet == null) {
+                    codeSet = new HashSet<>();
+                    subscriberCodesMap.put(subscriberKey, codeSet);
+                }
+                codeSet.add(code);
+                keySet = entrySubscriberMap.get(entry);
+                if (keySet == null) {
+                    keySet = new HashSet<>();
+                    entrySubscriberMap.put(entry, keySet);
+                }
+                keySet.add(subscriberKey);
+            }
+        }
+    }
+
+    private void doUnregister(final Object subscriber) {
+        synchronized(subscribeLock) {
+            final SubscriberKey subscriberKey = new SubscriberKey(subscriber);
+            final Set<Integer> codeSet = subscriberCodesMap.remove(subscriberKey);
+            if (codeSet != null) {
+                for (int code : codeSet) {
+                    final Set<SubscribeEntry> entrySet = codeSubscribeMethodsMap.get(code);
+                    if (entrySet != null) {
+                        SubscribeEntry[] entries = new SubscribeEntry[0];
+                        entries = entrySet.toArray(entries);
+                        for (SubscribeEntry entry : entries) {
+                            final Set<SubscriberKey> keySet = entrySubscriberMap.get(entry);
+                            if (keySet != null) {
+                                SubscriberKey[] keys = new SubscriberKey[0];
+                                keys = keySet.toArray(keys);
+                                for (SubscriberKey key : keys) {
+                                    if (key.subscriber == subscriber) {
+                                        keySet.remove(key);
+                                    }
+                                }
+                                if (keySet.isEmpty()) {
+                                    entrySubscriberMap.remove(entry);
+                                    entrySet.remove(entry);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private void onEvent(Message message, SubscribeEntry subscribeEntry, Object instance) {
         try {
+            if (message == null || subscribeEntry == null || instance == null) {
+                return;
+            }
             final Object[] parameters;
             if (!message.isTypeInfoInParameters) {
                 parameters = message.parameters;
@@ -225,7 +357,7 @@ public enum RxBus {
                     return;
                 }
             }
-            subscribeEntry.method.invoke(subscriber, parameters);
+            subscribeEntry.method.invoke(instance, parameters);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -302,7 +434,8 @@ public enum RxBus {
         final Class<?>[] parametersClasses;
         private final int hashCode;
 
-        SubscribeEntry(int code, int scheduler, Class<?> instanceClass, Method method, Class<?>[] parametersClasses) {
+        SubscribeEntry(int code, int scheduler, Class<?> instanceClass,
+                       Method method, Class<?>[] parametersClasses) {
             this.code = code;
             this.scheduler = scheduler;
             this.instanceClass = instanceClass;
@@ -395,6 +528,19 @@ public enum RxBus {
         @Override
         public int hashCode() {
             return System.identityHashCode(subscriber);
+        }
+    }
+
+    private static final class ClassSubscribeEntryCache extends LinkedHashMap<Class<?>, List<SubscribeEntry>> {
+        volatile int lruCapacity = 16;
+        ClassSubscribeEntryCache() {
+            super(32, 0.75F, true);
+        }
+
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<Class<?>, List<SubscribeEntry>> eldest) {
+//            System.out.println("removeEldestEntry: { " + eldest.getKey() + " : " + eldest.getValue() + " }");
+            return size() > lruCapacity;
         }
     }
 }

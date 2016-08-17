@@ -9,7 +9,7 @@ import org.rxbus.Subscribe;
  */
 public class Just {
     public Just() {
-        RxBus.singleInstance.register(this);
+        RxBus.singleInstance.registerAsync(this);
     }
 
     @Subscribe(code = 2, scheduler = Subscribe.SCHEDULER_CURRENT_THREAD)
