@@ -3,8 +3,10 @@ package com.johnsoft.app.testeventbus;
 import org.rxbus.RxBus;
 import org.rxbus.Subscribe;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
+import android.view.View;
 
 public class MainActivity extends AppCompatActivity {
     private Just olds;
@@ -17,6 +19,15 @@ public class MainActivity extends AppCompatActivity {
         RxBus.singleInstance.registerSync(this);
         olds = new Just();
         news = new Just();
+        final View btn = findViewById(R.id.clickme);
+        if (btn != null) {
+            btn.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    startActivity(new Intent(MainActivity.this, TestActivity.class));
+                }
+            });
+        }
     }
 
     @Override

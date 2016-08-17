@@ -34,7 +34,7 @@ public class ApplicationBase extends Application {
             @Override
             public void run() {
                 try {
-                    Thread.sleep(5000);
+                    Thread.sleep(4000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
@@ -43,7 +43,7 @@ public class ApplicationBase extends Application {
                 RxBus.singleInstance.postSync(2);
                 RxBus.singleInstance.unregisterSync(ApplicationBase.this);
                 try {
-                    Thread.sleep(5000);
+                    Thread.sleep(2000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
