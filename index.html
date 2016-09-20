@@ -50,6 +50,219 @@
 <p>Because of the API is valuable, so the interface of these two branches can be preserved and compatible. 
 As for the master branch of bug, it also wants to be corrected, if you are a warm-hearted guy.</p>
 </blockquote>
+
+<h3>
+<a id="samples" class="anchor" href="#samples" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Samples</h3>
+
+<blockquote>
+<p>The English version of the sample will be provided in the follow-up. At present, you can also refer to the test code or the sample code in the Chinese version(see below). you know that, the code is the same!</p>
+</blockquote>
+
+<h5>
+<a id="中文版示例--the-chinese-version-of-the-sample-" class="anchor" href="#%E4%B8%AD%E6%96%87%E7%89%88%E7%A4%BA%E4%BE%8B--the-chinese-version-of-the-sample-" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>中文版示例 ( The Chinese Version Of The Sample )</h5>
+
+<hr>
+
+<p><strong><em>event bus模型介绍</em></strong>
+org.rxbus.Rxbus类是个单例, 很容易看出来, 你只需Rxbus.singleInstance即可获得它的实例, 一般还需要经历以下步骤:</p>
+
+<ul>
+<li>
+<strong>事件接收类:</strong> 物色一个事件接收类, 你也可以为此兴建一个类, 如果你不想自娱自乐, 这个类或其父类里应该有带<a href="https://github.com/Subscribe" class="user-mention">@Subscribe</a>注解的方法, 对的, 那就是当事件发生时, 你希望回调的方法;</li>
+<li>
+<strong>注册:</strong> 将这个事件接收类的实例通过Rxbus的register开头的方法注册一下, 它将被管理起来, 一有相关事件发生将通知它, 当不再关心事件, 你会发现取消订阅也是很容易的事, 只需要将这个实例塞进Rxbus的unregister开头的方法里头;</li>
+<li>
+<strong>投递:</strong> 当走了一套逻辑, 终于憋出来了一个事件, 那么可以使用Rxbus的post开头的方法进行事件的分发, Rxbus将会把事件通知到所有订阅者;</li>
+</ul>
+
+<hr>
+
+<p><strong><em>示例和规则解释</em></strong>  </p>
+
+<p>下面我们通过一个例子来说明一些规则, 那样你会更清楚怎么使用, 但这个例子我可不希望你用在实战上. 假设你有两个银行账户, 你的财务经理不知道为什么, 就是不定期的给你预先打一些差旅费, 而且忽然间银行柜员每月将等额年金打到你的PayPal账户, 偶尔你的朋友也会把钱存错在你的PayPal账户里, 你希望到账时收到一个通知, 假设你的妻子不放心你, 也想知道打款情况, 而你有些私房钱不希望她知道, 就是那个渣打银行账户. 我们通过代码来模拟这种欣欣向荣的场景:</p>
+
+<div class="highlight highlight-source-java"><pre><span class="pl-c">// 订阅方法所在的类, 即事件接收类, 不仅可以是公开类, 还可以是final类, 非公开类, 内部类</span>
+<span class="pl-k">public</span> <span class="pl-k">class</span> <span class="pl-en">You</span> {
+    <span class="pl-k">public</span> <span class="pl-k">static</span> <span class="pl-k">final</span> <span class="pl-k">int</span> Constant_paypal <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">"</span>paypal<span class="pl-pds">"</span></span><span class="pl-k">.</span>hashCode();
+    <span class="pl-k">public</span> <span class="pl-k">static</span> <span class="pl-k">final</span> <span class="pl-k">int</span> Constant_SCBank <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">"</span>StandardChartered<span class="pl-pds">"</span></span><span class="pl-k">.</span>hashCode();
+    <span class="pl-k">public</span> <span class="pl-k">static</span> <span class="pl-k">final</span> <span class="pl-k">int</span> Constant_Citibank <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">"</span>Citibank<span class="pl-pds">"</span></span><span class="pl-k">.</span>hashCode();
+
+    <span class="pl-c">// 使用code区分事件, 而不是参数类型</span>
+
+    <span class="pl-k">@Subscribe</span>(<span class="pl-c1">code</span> <span class="pl-k">=</span> <span class="pl-smi">Constant_paypal</span>, <span class="pl-c1">scheduler</span> <span class="pl-k">=</span> <span class="pl-smi">Subscribe</span><span class="pl-c1"><span class="pl-k">.</span>SCHEDULER_CURRENT_THREAD</span> <span class="pl-c">/* 调用者当前线程中回调此方法, 如果你想同步回调 */</span> )
+    <span class="pl-k">public</span> <span class="pl-k">void</span> <span class="pl-en">moneyFromPaypal</span>(<span class="pl-smi">String</span> <span class="pl-v">name</span>, <span class="pl-k">int</span> <span class="pl-v">amounts</span>) { <span class="pl-c">// 方法参数个数不限, 只要投递事件时参数能对应上</span>
+        <span class="pl-smi">System</span><span class="pl-k">.</span>out<span class="pl-k">.</span>println(<span class="pl-s"><span class="pl-pds">"</span>friend named <span class="pl-pds">"</span></span> <span class="pl-k">+</span> name <span class="pl-k">+</span> <span class="pl-s"><span class="pl-pds">"</span> pay $<span class="pl-pds">"</span></span> <span class="pl-k">+</span> amounts <span class="pl-k">+</span> <span class="pl-s"><span class="pl-pds">"</span> on thread <span class="pl-pds">"</span></span> <span class="pl-k">+</span> <span class="pl-smi">Thread</span><span class="pl-k">.</span>currentThread()<span class="pl-k">.</span>getId() <span class="pl-k">+</span> <span class="pl-s"><span class="pl-pds">"</span> for <span class="pl-pds">"</span></span> <span class="pl-k">+</span> getClass()<span class="pl-k">.</span>getSimpleName());
+    }
+
+    <span class="pl-k">@Subscribe</span>(<span class="pl-c1">code</span> <span class="pl-k">=</span> <span class="pl-smi">Constant_paypal</span>, <span class="pl-c1">scheduler</span> <span class="pl-k">=</span> <span class="pl-smi">Subscribe</span><span class="pl-c1"><span class="pl-k">.</span>SCHEDULER_CURRENT_THREAD</span>)
+    <span class="pl-k">public</span> <span class="pl-k">void</span> <span class="pl-en">moneyFromPaypalQuota</span>() { <span class="pl-c">// 一个类中可以有多个方法订阅同一个事件code, 它们都将得到回调</span>
+         <span class="pl-smi">System</span><span class="pl-k">.</span>out<span class="pl-k">.</span>println(<span class="pl-s"><span class="pl-pds">"</span>Receive annuity $<span class="pl-pds">"</span></span> <span class="pl-k">+</span> amounts <span class="pl-k">+</span> <span class="pl-s"><span class="pl-pds">"</span> on thread <span class="pl-pds">"</span></span> <span class="pl-k">+</span> <span class="pl-smi">Thread</span><span class="pl-k">.</span>currentThread()<span class="pl-k">.</span>getId() <span class="pl-k">+</span> <span class="pl-s"><span class="pl-pds">"</span> for <span class="pl-pds">"</span></span> <span class="pl-k">+</span> getClass()<span class="pl-k">.</span>getSimpleName());
+    }
+
+    <span class="pl-k">@Subscribe</span>(<span class="pl-c1">code</span> <span class="pl-k">=</span> <span class="pl-smi">Constant_SCBank</span>, <span class="pl-c1">scheduler</span> <span class="pl-k">=</span> <span class="pl-smi">Subscribe</span><span class="pl-c1"><span class="pl-k">.</span>SCHEDULER_CURRENT_THREAD</span>)
+    <span class="pl-k">private</span> <span class="pl-k">void</span> <span class="pl-en">moneyFromStandardCharteredBank</span>(<span class="pl-k">int</span> <span class="pl-v">amounts</span>) { <span class="pl-c">// 订阅方法可以是私有方法</span>
+        <span class="pl-smi">System</span><span class="pl-k">.</span>out<span class="pl-k">.</span>println(<span class="pl-s"><span class="pl-pds">"</span>StandardCharteredBank pay $<span class="pl-pds">"</span></span> <span class="pl-k">+</span> amounts <span class="pl-k">+</span> <span class="pl-s"><span class="pl-pds">"</span> on thread <span class="pl-pds">"</span></span> <span class="pl-k">+</span> <span class="pl-smi">Thread</span><span class="pl-k">.</span>currentThread()<span class="pl-k">.</span>getId() <span class="pl-k">+</span> <span class="pl-s"><span class="pl-pds">"</span> for <span class="pl-pds">"</span></span> <span class="pl-k">+</span> getClass()<span class="pl-k">.</span>getSimpleName());
+    }
+
+    <span class="pl-k">@Subscribe</span>(<span class="pl-c1">code</span> <span class="pl-k">=</span> <span class="pl-smi">Constant_Citibank</span>, <span class="pl-c1">scheduler</span> <span class="pl-k">=</span> <span class="pl-smi">Subscribe</span><span class="pl-c1"><span class="pl-k">.</span>SCHEDULER_IO_POOL_THREAD</span> <span class="pl-c">/* io线程池里回调这个方法 */</span> )
+    <span class="pl-k">public</span> <span class="pl-k">static</span> <span class="pl-k">void</span> <span class="pl-en">moneyFromCitibank</span>(<span class="pl-k">int</span> <span class="pl-v">amounts</span>) { <span class="pl-c">// 可以是静态方法, 当然到时需要注册的是此类类对象</span>
+        <span class="pl-smi">System</span><span class="pl-k">.</span>out<span class="pl-k">.</span>println(<span class="pl-s"><span class="pl-pds">"</span>Citibank pay $<span class="pl-pds">"</span></span> <span class="pl-k">+</span> amounts <span class="pl-k">+</span> <span class="pl-s"><span class="pl-pds">"</span> on thread <span class="pl-pds">"</span></span> <span class="pl-k">+</span> <span class="pl-smi">Thread</span><span class="pl-k">.</span>currentThread()<span class="pl-k">.</span>getId() <span class="pl-k">+</span> <span class="pl-s"><span class="pl-pds">"</span> for <span class="pl-pds">"</span></span> <span class="pl-k">+</span> getClass()<span class="pl-k">.</span>getSimpleName());
+    }
+}
+
+<span class="pl-c">// 此时她将可以收到除moneyFromStandardCharteredBank以外的通知, 尽管里面没有声明方法, 但继承了啊~</span>
+<span class="pl-k">class</span> <span class="pl-en">YourWife</span> <span class="pl-k">extends</span> <span class="pl-e">You</span> {
+}</pre></div>
+
+<p>然后假设财务经理, 银行职员, 你的朋友长这个样子:</p>
+
+<div class="highlight highlight-source-java"><pre><span class="pl-k">class</span> <span class="pl-en">FinanceManager</span> {
+    <span class="pl-k">private</span> <span class="pl-k">static</span> <span class="pl-k">final</span> <span class="pl-smi">Random</span> rand <span class="pl-k">=</span> <span class="pl-k">new</span> <span class="pl-smi">Random</span>();
+    <span class="pl-k">public</span> <span class="pl-k">static</span> <span class="pl-k">void</span> <span class="pl-en">payMoney</span>(<span class="pl-k">int</span> <span class="pl-v">amounts</span>) {
+         <span class="pl-k">if</span> (rand<span class="pl-k">.</span>nextBoolean()) {
+            <span class="pl-smi">Rxbus</span><span class="pl-k">.</span>singleInstance<span class="pl-k">.</span>postAsync(<span class="pl-smi">You</span><span class="pl-k">.</span><span class="pl-smi">Constant_Citibank</span>, amounts);
+         } <span class="pl-k">else</span> {
+            <span class="pl-smi">Rxbus</span><span class="pl-k">.</span>singleInstance<span class="pl-k">.</span>postAsync(<span class="pl-smi">You</span><span class="pl-k">.</span><span class="pl-smi">Constant_SCBank</span>, amounts);
+         }
+    }
+}
+<span class="pl-k">class</span> <span class="pl-en">BankOfficial</span> {
+    <span class="pl-k">public</span> <span class="pl-k">static</span> <span class="pl-k">void</span> <span class="pl-en">payMoney</span>() {
+         <span class="pl-smi">Rxbus</span><span class="pl-k">.</span>singleInstance<span class="pl-k">.</span>postSync(<span class="pl-smi">You</span><span class="pl-k">.</span><span class="pl-smi">Constant_paypal</span>, <span class="pl-c1">20</span>);
+    }
+}
+<span class="pl-k">class</span> <span class="pl-en">YourFriend</span> {
+    <span class="pl-k">private</span> <span class="pl-smi">String</span> name;
+    <span class="pl-k">public</span> <span class="pl-en">YourFriend</span>(<span class="pl-smi">String</span> <span class="pl-v">name</span>) {
+         <span class="pl-v">this</span><span class="pl-k">.</span>name <span class="pl-k">=</span> name;
+    }
+    <span class="pl-k">public</span> <span class="pl-k">void</span> <span class="pl-en">payMoney</span>(<span class="pl-k">int</span> <span class="pl-v">amounts</span>) {
+         <span class="pl-smi">Rxbus</span><span class="pl-k">.</span>singleInstance<span class="pl-k">.</span>postAsync(<span class="pl-smi">You</span><span class="pl-k">.</span><span class="pl-smi">Constant_paypal</span>, name, <span class="pl-c1">20</span>);
+    }
+}</pre></div>
+
+<p>需要<strong>注意</strong>的是:</p>
+
+<ul>
+<li>post方法的sync和async是针对post调用来说的, 并不是说postSync是当前线程同步回调订阅者的方法, 在<a href="https://github.com/Subscribe" class="user-mention">@Subscribe</a>里定义的scheduler是什么, 就在那个线程调用, 回调线程仅与scheduler有关, 别犹豫;</li>
+<li>始终记住post方法的第一个参数是code, 而不是订阅者回调方法的第一个参数, post方法接收的是可变参数, 需要保证post方法的第二个参数开始, 要保证其顺序, 类型, 以及数量都和订阅者方法的参数列表一致, 简图如下: <a href="https://github.com/Subscribe" class="user-mention">@Subscribe</a>(code) method(A, B, C) -&gt; post(code, A, B, C);</li>
+<li>为什么是int类型的code, 起初我想使用String, 但一个int是4个字节, 一个空字符串将近占40个字节, 果断int了, 而且这些code应该说明为常量集中管理, 使用int吧, 给每个code起个好听的名字;</li>
+</ul>
+
+<p>现在我们来测试一下:</p>
+
+<div class="highlight highlight-source-java"><pre><span class="pl-k">public</span> <span class="pl-smi">Test</span> {
+    <span class="pl-k">public</span> <span class="pl-k">static</span> <span class="pl-k">void</span> main(<span class="pl-k">String</span>[] args) {
+        <span class="pl-smi">You</span> you <span class="pl-k">=</span> <span class="pl-k">new</span> <span class="pl-smi">You</span>();
+        <span class="pl-smi">YourWife</span> wife <span class="pl-k">=</span> <span class="pl-k">new</span> <span class="pl-smi">YourWife</span>();
+        <span class="pl-smi">Rxbus</span><span class="pl-k">.</span>singleInstance<span class="pl-k">.</span>registerSync(you); <span class="pl-c">// 当用完以后, 可以使用unregisterSync取消订阅</span>
+        <span class="pl-smi">Rxbus</span><span class="pl-k">.</span>singleInstance<span class="pl-k">.</span>registerSync(wife); <span class="pl-c">// 测试子类回调</span>
+        <span class="pl-smi">Rxbus</span><span class="pl-k">.</span>singleInstance<span class="pl-k">.</span>registerSync(<span class="pl-smi">You</span><span class="pl-k">.</span>class); <span class="pl-c">// 为了接收静态方法回调</span>
+        <span class="pl-c">// 可以参考日志</span>
+        <span class="pl-smi">FinanceManager</span><span class="pl-k">.</span>payMoney(<span class="pl-c1">300</span>); <span class="pl-c">// 注意在哪个线程得到的回调</span>
+        <span class="pl-smi">BankOfficial</span><span class="pl-k">.</span>payMoney();
+        <span class="pl-smi">YourFriend</span> zhangsan <span class="pl-k">=</span> <span class="pl-k">new</span> <span class="pl-smi">YourFriend</span>(<span class="pl-s"><span class="pl-pds">"</span>zhangsan<span class="pl-pds">"</span></span>), lisi <span class="pl-k">=</span> <span class="pl-k">new</span> <span class="pl-smi">YourFriend</span>(<span class="pl-s"><span class="pl-pds">"</span>lisi<span class="pl-pds">"</span></span>);
+        zhangsan<span class="pl-k">.</span>payMoney(<span class="pl-c1">20000</span>);
+        lisi<span class="pl-k">.</span>payMoney(<span class="pl-c1">5</span>);
+    }
+}</pre></div>
+
+<p>最后需要嘚啵两句, 默认scheduler有:</p>
+
+<table>
+<thead>
+<tr>
+<th>枚举值</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SCHEDULER_CURRENT_THREAD</td>
+<td>调用者当前线程中回调</td>
+</tr>
+<tr>
+<td>SCHEDULER_NEW_THREAD</td>
+<td>新建一个线程回调</td>
+</tr>
+<tr>
+<td>SCHEDULER_IO_POOL_THREAD</td>
+<td>IO线程池(如未使用此值, 线程池不会被创建)中回调, 一般使用无线程池大小的cache线程池</td>
+</tr>
+<tr>
+<td>SCHEDULER_COMPUTE_POOL_THREAD</td>
+<td>计算线程池(如未使用此值, 线程池不会被创建)中回调, 一般使用固定大小的线程池(比如cpu核心数 + 1)</td>
+</tr>
+</tbody>
+</table>
+
+<p>那么如何在自定义线程中回调呢? Android中有个主线程的概念, 以此为例, 说明一下如何绑定自定义线程:</p>
+
+<div class="highlight highlight-source-java"><pre><span class="pl-c">// 注册</span>
+<span class="pl-smi">RxBus</span><span class="pl-k">.</span>singleInstance<span class="pl-k">.</span>addSchedulerWithId(<span class="pl-smi">SchedulerIdCenter</span><span class="pl-c1"><span class="pl-k">.</span>MAIN</span>, <span class="pl-smi">AndroidSchedulers</span><span class="pl-k">.</span>mainThread());
+<span class="pl-c1">...</span>
+<span class="pl-c">// 使用</span>
+<span class="pl-k">@Subscribe</span>(<span class="pl-c1">code</span><span class="pl-k">=</span><span class="pl-c1">108494</span>, <span class="pl-c1">scheduler</span><span class="pl-k">=</span> <span class="pl-smi">SchedulerIdCenter</span><span class="pl-c1"><span class="pl-k">.</span>MAIN</span>)
+<span class="pl-k">void</span> yourMethod(<span class="pl-c1">...</span>) {</pre></div>
+
+<p>即通过addSchedulerWithId和removeSchedulerWithId来实现自定义线程的绑定和解绑, 对于addSchedulerWithId, 它接收两个参数:</p>
+
+<ul>
+<li>第一个参数是一个int值, 用于<a href="https://github.com/Subscribe" class="user-mention">@Subscribe</a>的scheduler的枚举, 但必须保证其值大于Subscribe.SCHEDULER_FOR_FIRST_CUSTOM, 否则没效果;</li>
+<li>第二个参数是Scheduler类型, 你可以自己实现此接口, 也可以参考org.rxbus.ExecutorServiceScheduler和或org.rxbus.AndroidLooperScheduler;</li>
+</ul>
+
+<p>备注:
+目前没有单方法支持多code的计划, 即你不可能看到<a href="https://github.com/Subscribe" class="user-mention">@Subscribe</a>(code={1,8,9}, scheduler=...)...的情况, 取而代之, 你可以让方法接收一个参数来进一步分流, 比如触摸事件分为单击, 双击, 你既可以分配两个code, 然后对应两个不同的回调方法, 也可以分配一个code, 然后对应一个带参回调, 见下面代码:
+第一种:</p>
+
+<div class="highlight highlight-source-java"><pre><span class="pl-k">@Subscribe</span>(<span class="pl-c1">code</span><span class="pl-k">=</span><span class="pl-c1">SINGLE_CLICK_INT</span>, <span class="pl-c1">scheduler</span><span class="pl-k">=</span><span class="pl-c1">...</span>)
+<span class="pl-k">void</span> method() {<span class="pl-c1">...</span>}
+<span class="pl-k">@Subscribe</span>(<span class="pl-c1">code</span><span class="pl-k">=</span><span class="pl-c1">DOUBLE_CLICK_INT</span>, <span class="pl-c1">scheduler</span><span class="pl-k">=</span><span class="pl-c1">...</span>)
+<span class="pl-k">void</span> method() {<span class="pl-c1">...</span>}</pre></div>
+
+<p>第二种:</p>
+
+<div class="highlight highlight-source-java"><pre><span class="pl-k">@Subscribe</span>(<span class="pl-c1">code</span><span class="pl-k">=</span><span class="pl-c1">CLICK_INT</span>, <span class="pl-c1">scheduler</span><span class="pl-k">=</span><span class="pl-c1">...</span>)
+<span class="pl-k">void</span> method(<span class="pl-k">int</span> type) {
+    <span class="pl-k">switch</span>(type) {
+        <span class="pl-k">case</span> <span class="pl-c1">SINGLE_CLICK</span><span class="pl-k">:</span>
+        <span class="pl-k">case</span> <span class="pl-c1">DOUBLE_CLICK</span><span class="pl-k">:</span>
+    }
+}</pre></div>
+
+<hr>
+
+<h3>
+<a id="gradle" class="anchor" href="#gradle" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Gradle</h3>
+
+<div class="highlight highlight-source-groovy"><pre>compile <span class="pl-s"><span class="pl-pds">'</span>io.reactivex:rxandroid:1.2.1<span class="pl-pds">'</span></span>
+compile <span class="pl-s"><span class="pl-pds">'</span>io.reactivex:rxjava:1.1.6<span class="pl-pds">'</span></span>
+compile (<span class="pl-s"><span class="pl-pds">'</span>com.github.johnlee175:rxbus:1.0.2<span class="pl-pds">'</span></span>) {
+    exclude <span class="pl-c1">group</span>:<span class="pl-s"><span class="pl-pds">'</span>io.reactivex<span class="pl-pds">'</span></span>, <span class="pl-c1">module</span>:<span class="pl-s"><span class="pl-pds">'</span>rxandroid<span class="pl-pds">'</span></span>
+    exclude <span class="pl-c1">group</span>:<span class="pl-s"><span class="pl-pds">'</span>io.reactivex<span class="pl-pds">'</span></span>, <span class="pl-c1">module</span>:<span class="pl-s"><span class="pl-pds">'</span>rxjava<span class="pl-pds">'</span></span>
+}</pre></div>
+
+<hr>
+
+<h3>
+<a id="license" class="anchor" href="#license" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>License</h3>
+
+<pre><code>Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements. See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to You under the Apache license, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the license for the specific language governing permissions and
+limitations under the license.
+</code></pre>
       </section>
       <footer>
         <p>Project maintained by <a href="https://github.com/johnlee175">johnlee175</a></p>
