@@ -1,0 +1,6 @@
+{
+  "name": "Rxbus",
+  "tagline": "a event bus trigger by code, constrained by thread, and avoid creating event class",
+  "body": "### Project Preface\r\n>When I found I have to create a class as the distinction between events for, when I found the event bus which we are using is not based on annotations, when I found some engineers did not have a very good cognitive about the event callback in which thread, when I found that after the introduction of rxjava/rxandroid library, someone still do not know how to use and expect event bus way, I decided to do it, then the rxbus which belong to me was born.\r\n\r\n>At the beginning of the project, I use the rxjava/rxandroid library to implement the event bus model, which is presented by the master branch. but later, because of a failure to repair bug, I have to use the most simple way to achieve a robust library, to ensure its high availability, so the version of the Maven central repository can be seen in the justbus branch.\r\n\r\n>Because of the API is valuable, so the interface of these two branches can be preserved and compatible. \r\nAs for the master branch of bug, it also wants to be corrected, if you are a warm-hearted guy.\r\n\r\n",
+  "note": "Don't delete this file! It's used internally to help with page regeneration."
+}
