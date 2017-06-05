@@ -8,8 +8,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-import rx.Observable;
 import rx.Scheduler;
 import rx.Subscription;
 import rx.functions.Action1;
@@ -24,7 +25,6 @@ import rx.subjects.Subject;
  * @author John Kenrinus Lee
  * @version 2016-07-10
  */
-// TODO if use for-i or for-each instead rxjava-stream on next version or not?
 public enum RxBus {
     singleInstance;
 
@@ -46,13 +46,22 @@ public enum RxBus {
     private final Subject<Object, Object> bus;
     private final ConcurrentHashMap<SubscriberKey, Set<Subscription>> subscriberMap;
     private final ConcurrentHashMap<Integer, Scheduler> customSchedulerMap;
+    private final ExecutorService poolExecutor;
     private boolean validateParametersMatches;
 
     RxBus() {
         bus = new SerializedSubject<>(PublishSubject.create());
         subscriberMap = new ConcurrentHashMap<>();
         customSchedulerMap = new ConcurrentHashMap<>();
+        poolExecutor = Executors.newCachedThreadPool();
         validateParametersMatches = true;
+    }
+
+    /** destroy resource if don't use this class again */
+    public void destroy() {
+        subscriberMap.clear();
+        customSchedulerMap.clear();
+        poolExecutor.shutdownNow();
     }
 
     /** if set true, will check parameters before call target callback method. */
@@ -108,7 +117,12 @@ public enum RxBus {
      * @param subscriber callback target, must be not null
      */
     public void register(final Object subscriber) {
-        doRegister(subscriber, Schedulers.computation());
+        poolExecutor.submit(new Runnable() {
+            @Override
+            public void run() {
+                doRegister(subscriber);
+            }
+        });
     }
 
     /**
@@ -116,7 +130,7 @@ public enum RxBus {
      * @param subscriber callback target, must be not null
      */
     public void registerSync(final Object subscriber) {
-        doRegister(subscriber, Schedulers.immediate());
+        doRegister(subscriber);
     }
 
     /**
@@ -124,7 +138,12 @@ public enum RxBus {
      * @param subscriber callback target, can be null
      */
     public void unregister(final Object subscriber) {
-        doUnregister(subscriber, Schedulers.computation());
+        poolExecutor.submit(new Runnable() {
+            @Override
+            public void run() {
+                doUnregister(subscriber);
+            }
+        });
     }
 
     /**
@@ -132,70 +151,58 @@ public enum RxBus {
      * @param subscriber callback target, can be null
      */
     public void unregisterSync(final Object subscriber) {
-        doUnregister(subscriber, Schedulers.immediate());
+        doUnregister(subscriber);
     }
 
-    private void doRegister(final Object subscriber, final Scheduler scheduler) {
+    private void doRegister(final Object subscriber) {
         final SubscriberKey subscriberKey = new SubscriberKey(subscriber);
         if (subscriberMap.containsKey(subscriberKey)) {
             return;
         }
         final Class<?> subscriberClass = subscriber.getClass();
-        Observable.from(subscriberClass.getDeclaredMethods())
-            .observeOn(scheduler)
-            .filter(new Func1<Method, Boolean>() {
-                @Override
-                public Boolean call(Method method) {
-                    return method.isAnnotationPresent(Subscribe.class);
-                }
-            })
-            .forEach(new Action1<Method>() {
-                @Override
-                public void call(Method method) {
-                    method.setAccessible(true);
-                    final Subscribe subscribe = method.getAnnotation(Subscribe.class);
-                    final int code = subscribe.code();
-                    final int scheduler = subscribe.scheduler();
-                    final SubscribeEntry entry = new SubscribeEntry(code, scheduler,
-                            subscriberClass, method, method.getParameterTypes());
-                    Subscription subscription = bus.filter(new Func1<Object, Boolean>() {
-                            @Override
-                            public Boolean call(Object message) {
-                                return Message.class.isInstance(message) && ((Message) message).code == code;
-                            }
-                        })
-                        .observeOn(getScheduler(scheduler))
-                        .subscribe(new Action1<Object>() {
-                            @Override
-                            public void call(Object message) {
-                                onEvent((Message) message, entry, subscriber);
-                            }
-                        });
-                    final Set<Subscription> newScriptionSet = Collections
-                            .synchronizedSet(new HashSet<Subscription>());
-                    final Set<Subscription> oldScriptionSet = subscriberMap
-                            .putIfAbsent(subscriberKey, newScriptionSet);
-                    final Set<Subscription> subscriptionSet;
-                    if (oldScriptionSet != null) {
-                        subscriptionSet = oldScriptionSet;
-                    } else {
-                        subscriptionSet = newScriptionSet;
+        for (Method method : subscriberClass.getDeclaredMethods()) {
+            if (method.isAnnotationPresent(Subscribe.class)) {
+                method.setAccessible(true);
+                final Subscribe subscribe = method.getAnnotation(Subscribe.class);
+                final int code = subscribe.code();
+                final int schedulerCode = subscribe.scheduler();
+                final SubscribeEntry entry = new SubscribeEntry(code, schedulerCode,
+                        subscriberClass, method, method.getParameterTypes());
+                Subscription subscription = bus.filter(new Func1<Object, Boolean>() {
+                    @Override
+                    public Boolean call(Object message) {
+                        return Message.class.isInstance(message) && ((Message) message).code == code;
                     }
-                    subscriptionSet.add(subscription);
+                })
+                .observeOn(getScheduler(schedulerCode))
+                .subscribe(new Action1<Object>() {
+                    @Override
+                    public void call(Object message) {
+                        onEvent((Message) message, entry, subscriber);
+                    }
+                });
+                final Set<Subscription> newScriptionSet = Collections
+                        .synchronizedSet(new HashSet<Subscription>());
+                final Set<Subscription> oldScriptionSet = subscriberMap
+                        .putIfAbsent(subscriberKey, newScriptionSet);
+                final Set<Subscription> subscriptionSet;
+                if (oldScriptionSet != null) {
+                    subscriptionSet = oldScriptionSet;
+                } else {
+                    subscriptionSet = newScriptionSet;
                 }
-            });
+                subscriptionSet.add(subscription);
+            }
+        }
     }
 
-    private void doUnregister(final Object subscriber, final Scheduler scheduler) {
+    private void doUnregister(final Object subscriber) {
         final SubscriberKey subscriberKey = new SubscriberKey(subscriber);
         final Set<Subscription> subscriptionSet = subscriberMap.remove(subscriberKey);
         if (subscriptionSet != null) {
-            Observable.from(subscriptionSet).observeOn(scheduler).forEach(new Action1<Subscription>() {
-                @Override
-                public void call(Subscription subscription) {
-                    subscription.unsubscribe();
-                }
-            });
+            for (Subscription subscription : subscriptionSet) {
+                subscription.unsubscribe();
+            }
         }
     }
 
